@@ -92,19 +92,10 @@ tr:hover td { background: #1e293b; }
 </div>
 
 <script>
-const PIN_HASH = '9a9b53cd1428091eb044b754af6099c05b8b7d803d3f616e06fe2d9d0955a836';
-
-async function hashPin(pin) {
-  const enc = new TextEncoder().encode(pin);
-  const buf = await crypto.subtle.digest('SHA-256', enc);
-  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2,'0')).join('');
-}
-
-async function checkPin() {
+function checkPin() {
   const input = document.getElementById('pinInput');
   const err = document.getElementById('pinError');
-  const h = await hashPin(input.value);
-  if (h === PIN_HASH) {
+  if (input.value === 'mamayuli') {
     sessionStorage.setItem('hutang_unlock', '1');
     document.getElementById('lockScreen').style.display = 'none';
     loadData();
