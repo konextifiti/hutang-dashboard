@@ -188,9 +188,10 @@ async function loadData() {
     `;
 
     // Chart Kreditur
-    if (window.chartKreditur) window.chartKreditur.destroy();
+    if (window._charts) window._charts.forEach(c => c.destroy());
+    window._charts = [];
     const ctx1 = document.getElementById('chartKreditur').getContext('2d');
-    window.chartKreditur = new Chart(ctx1, {
+    window._charts.push(new Chart(ctx1, {
       type: 'bar',
       data: {
         labels: krediturList.map(k => k.kreditur),
@@ -214,8 +215,7 @@ async function loadData() {
     // Chart Status
     const totalLunas = krediturList.reduce((a,b) => a + b.lunas, 0);
     const totalPartial = krediturList.reduce((a,b) => a + b.partial, 0);
-    if (window.chartStatus) window.chartStatus.destroy();
-    window.chartStatus = new Chart(document.getElementById('chartStatus'), {
+    window._charts.push(new Chart(document.getElementById('chartStatus'), {
       type: 'doughnut',
       data: {
         labels: ['Belum Lunas', 'Lunas', 'Partial'],
