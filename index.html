@@ -124,9 +124,10 @@ const SUPABASE_URL = 'https://vyobkmluqgvuqizandbu.supabase.co';
 const ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ5b2JrbWx1cWd2dXFpemFuZGJ1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI1MDQ2OTYsImV4cCI6MjA5ODA4MDY5Nn0.9qGuiFYPKUnV3VupSNFfLvDVuIyA6tJYycI1qy41e80';
 const COLORS = { Mandiri_Opa:'#f59e0b', BCA_Opa:'#ef4444', Jenius_Uncle:'#3b82f6', Jenius_Auntie:'#8b5cf6', Mandiri_Uncle:'#10b981' };
 
-async function query(path) {
+async function query(path, signal) {
   const r = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
-    headers: { apikey: ANON_KEY, Authorization: `Bearer ${ANON_KEY}`, 'Accept': 'application/json' }
+    headers: { apikey: ANON_KEY, Authorization: `Bearer ${ANON_KEY}`, 'Accept': 'application/json' },
+    signal
   });
   if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
   return r.json();
@@ -143,10 +144,14 @@ async function loadData() {
   errorMsg.style.display = 'none';
 
   try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15000);
+
     const [debtData, instData] = await Promise.all([
-      query('debts?select=id,kreditur,nama_item,durasi'),
-      query('installments?select=debt_id,tanggal_jatuh_tempo,jumlah,status')
+      query('debts?select=id,kreditur,nama_item,durasi', controller.signal),
+      query('installments?select=debt_id,tanggal_jatuh_tempo,jumlah,status', controller.signal)
     ]);
+    clearTimeout(timeout);
 
     const debtMap = {};
     for (const d of debtData) debtMap[d.id] = { kreditur: d.kreditur, nama_item: d.nama_item };
@@ -248,7 +253,8 @@ async function loadData() {
     loading.style.display = 'none';
     errorMsg.style.display = 'block';
     console.error('Dashboard error:', e);
-    document.getElementById('errorMsg').textContent = 'Gagal memuat data: ' + (e.message || e) + (e.cause ? ' (' + e.cause + ')' : '');
+    const msg = e.name === 'AbortError' ? 'Timeout ??? server tidak merespon' : (e.message || e);
+    document.getElementById('errorMsg').textContent = 'Gagal memuat data: ' + msg;
   }
 }
 
