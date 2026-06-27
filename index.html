@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Dashboard Hutang</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js"></script>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body { font-family: system-ui, sans-serif; background: #0f172a; color: #e2e8f0; padding: 24px; }
+h1 { font-size: 1.5rem; margin-bottom: 24px; color: #f8fafc; }
+.loading { text-align: center; padding: 60px; color: #94a3b8; }
+.loading::after { content: ''; display: block; margin: 16px auto 0; width: 32px; height: 32px; border: 3px solid #334155; border-top-color: #3b82f6; border-radius: 50%; animation: spin .8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px; }
+.card { background: #1e293b; border-radius: 12px; padding: 20px; border: 1px solid #334155; }
+.card .label { font-size: .8rem; color: #94a3b8; margin-bottom: 4px; }
+.card .value { font-size: 1.5rem; font-weight: 700; color: #f8fafc; }
+.card .sub { font-size: .8rem; color: #64748b; margin-top: 4px; }
+.chart-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-bottom: 24px; }
+@media (max-width: 768px) { .chart-row { grid-template-columns: 1fr; } }
+.chart-box { background: #1e293b; border-radius: 12px; padding: 20px; border: 1px solid #334155; }
+.chart-box h3 { font-size: .9rem; color: #94a3b8; margin-bottom: 12px; }
+table { width: 100%; border-collapse: collapse; font-size: .85rem; }
+th { text-align: left; padding: 10px 12px; border-bottom: 2px solid #334155; color: #94a3b8; font-weight: 600; font-size: .75rem; text-transform: uppercase; letter-spacing: .5px; }
+td { padding: 10px 12px; border-bottom: 1px solid #1e293b; }
+tr:hover td { background: #1e293b; }
+.badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: .7rem; font-weight: 600; }
+.badge-danger { background: #7f1d1d; color: #fca5a5; }
+.badge-success { background: #166534; color: #86efac; }
+.badge-warning { background: #854d0e; color: #fde68a; }
+.text-right { text-align: right; }
+.text-danger { color: #f87171; }
+.text-muted { color: #94a3b8; }
+.mt-24 { margin-top: 24px; }
+.error { background: #7f1d1d; color: #fca5a5; padding: 16px; border-radius: 8px; margin-bottom: 16px; display: none; }
+.refresh-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+.refresh-bar .last-update { font-size: .75rem; color: #64748b; }
+.btn { background: #3b82f6; color: white; border: none; padding: 8px 16px; border-radius: 8px; cursor: pointer; font-size: .8rem; }
+.btn:hover { background: #2563eb; }
+</style>
+</head>
+<body>
+
+<div class="refresh-bar">
+  <h1> Hutang Dashboard</h1>
+  <div>
+    <span class="last-update" id="lastUpdate"></span>
+    <button class="btn" onclick="loadData()">Refresh</button>
+  </div>
+</div>
+
+<div class="error" id="errorMsg"></div>
+<div class="loading" id="loading">Memuat data...</div>
+
+<div id="content" style="display:none">
+  <div class="grid" id="summaryCards"></div>
+  <div class="chart-row">
+    <div class="chart-box"><h3>Total per Kreditur</h3><canvas id="chartKreditur"></canvas></div>
+    <div class="chart-box"><h3>Status Installments</h3><canvas id="chartStatus"></canvas></div>
+  </div>
+  <div class="card" style="margin-bottom:24px">
+    <h3 style="color:#94a3b8;font-size:.9rem;margin-bottom:12px">Tagihan Per Kreditur</h3>
+    <table><thead><tr><th>Kreditur</th><th class="text-right">Total</th><th class="text-right">Lunas</th><th class="text-right">Sisa Tagihan</th></tr></thead><tbody id="krediturTable"></tbody></table>
+  </div>
+  <div class="card">
+    <h3 style="color:#94a3b8;font-size:.9rem;margin-bottom:12px">Installments Terbaru</h3>
+    <div style="overflow-x:auto">
+      <table><thead><tr><th>Kreditur</th><th>Item</th><th>Jatuh Tempo</th><th class="text-right">Jumlah</th><th>Status</th></tr></thead><tbody id="installmentsTable"></tbody></table>
+    </div>
+  </div>
+</div>
+
+<script>
+const SUPABASE_URL = 'https://vyobkmluqgvuqizandbu.supabase.co';
+const ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InZ5b2JrbWx1cWd2dXFpemFuZGJ1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODI1MDQ2OTYsImV4cCI6MjA5ODA4MDY5Nn0.9qGuiFYPKUnV3VupSNFfLvDVuIyA6tJYycI1qy41e80';
+const COLORS = { Mandiri_Opa:'#f59e0b', BCA_Opa:'#ef4444', Jenius_Uncle:'#3b82f6', Jenius_Auntie:'#8b5cf6', Mandiri_Uncle:'#10b981' };
+
+async function query(path) {
+  const r = await fetch(`${SUPABASE_URL}/rest/v1/${path}`, {
+    headers: { apikey: ANON_KEY, Authorization: `Bearer ${ANON_KEY}`, 'Accept': 'application/json' }
+  });
+  if (!r.ok) throw new Error(`${r.status} ${r.statusText}`);
+  return r.json();
+}
+
+function formatRp(v) { return 'Rp ' + (v/1e6).toFixed(1) + ' jt'; }
+
+async function loadData() {
+  const loading = document.getElementById('loading');
+  const content = document.getElementById('content');
+  const errorMsg = document.getElementById('errorMsg');
+  loading.style.display = 'block';
+  content.style.display = 'none';
+  errorMsg.style.display = 'none';
+
+  try {
+    const [debts, installments, payments] = await Promise.all([
+      query('debts?select=id,kreditur,nama_item,durasi&order=kreditur'),
+      query('installments?select=id,debt_id,tanggal_jatuh_tempo,jumlah,status,tanggal_bayar&order=tanggal_jatuh_tempo.desc'),
+      query('debts?select=kreditur,installments(id,jumlah,status)')
+    ]);
+
+    // Group by kreditur
+    const statsMap = {};
+    for (const d of debts) {
+      if (!statsMap[d.kreditur]) statsMap[d.kreditur] = { kreditur: d.kreditur, total: 0, lunas: 0, belum: 0, partial: 0, sisa: 0 };
+    }
+
+    for (const d of debts) {
+      if (!statsMap[d.kreditur]) continue;
+    }
+
+    // Query stats via separate call
+    const instData = await query('installments?select=debt_id,jumlah,status');
+    const debtData = await query('debts?select=id,kreditur');
+
+    const debtMap = {};
+    for (const d of debtData) debtMap[d.id] = d.kreditur;
+
+    for (const i of instData) {
+      const kr = debtMap[i.debt_id] || 'Unknown';
+      if (!statsMap[kr]) statsMap[kr] = { kreditur: kr, total: 0, lunas: 0, belum: 0, partial: 0, sisa: 0 };
+      statsMap[kr].total++;
+      if (i.status === 'lunas') statsMap[kr].lunas++;
+      else if (i.status === 'partial') { statsMap[kr].partial++; statsMap[kr].sisa += Number(i.jumlah); }
+      else { statsMap[kr].belum++; statsMap[kr].sisa += Number(i.jumlah); }
+    }
+
+    const krediturList = Object.values(statsMap).sort((a,b) => b.sisa - a.sisa);
+    const totalSisa = krediturList.reduce((a,b) => a + b.sisa, 0);
+    const totalInst = krediturList.reduce((a,b) => a + b.total, 0);
+    const totalBelum = krediturList.reduce((a,b) => a + b.belum, 0);
+
+    document.getElementById('summaryCards').innerHTML = `
+      <div class="card"><div class="label">Total Sisa Tagihan</div><div class="value text-danger">${formatRp(totalSisa)}</div><div class="sub">${totalInst} installment</div></div>
+      <div class="card"><div class="label">Kreditur</div><div class="value">${krediturList.length}</div><div class="sub">${krediturList.filter(k => k.belum > 0).length} aktif</div></div>
+      <div class="card"><div class="label">Rata-rata per Kreditur</div><div class="value">${formatRp(totalSisa/krediturList.length)}</div><div class="sub">${totalInst} installment total</div></div>
+      <div class="card"><div class="label">Belum Lunas</div><div class="value text-danger">${totalBelum}</div><div class="sub">dari ${totalInst} installment</div></div>
+    `;
+
+    // Chart Kreditur
+    const ctx1 = document.getElementById('chartKreditur').getContext('2d');
+    new Chart(ctx1, {
+      type: 'bar',
+      data: {
+        labels: krediturList.map(k => k.kreditur),
+        datasets: [{
+          label: 'Sisa Tagihan',
+          data: krediturList.map(k => k.sisa),
+          backgroundColor: krediturList.map(k => COLORS[k.kreditur.replace(/ /g,'_')] || '#64748b'),
+          borderRadius: 6
+        }]
+      },
+      options: {
+        responsive: true,
+        plugins: { legend: { display: false } },
+        scales: {
+          y: { ticks: { callback: v => 'Rp' + (v/1e6).toFixed(0) + 'jt', color:'#94a3b8' }, grid: { color:'#334155' } },
+          x: { ticks: { color:'#94a3b8' } }
+        }
+      }
+    });
+
+    // Chart Status
+    const totalLunas = krediturList.reduce((a,b) => a + b.lunas, 0);
+    const totalPartial = krediturList.reduce((a,b) => a + b.partial, 0);
+    new Chart(document.getElementById('chartStatus'), {
+      type: 'doughnut',
+      data: {
+        labels: ['Belum Lunas', 'Lunas', 'Partial'],
+        datasets: [{ data: [totalBelum, totalLunas, totalPartial], backgroundColor: ['#f87171', '#86efac', '#fbbf24'] }]
+      },
+      options: {
+        responsive: true,
+        plugins: { legend: { position: 'bottom', labels: { color:'#94a3b8', padding: 16 } } }
+      }
+    });
+
+    // Kreditur table
+    document.getElementById('krediturTable').innerHTML = krediturList.map(k => `
+      <tr>
+        <td><strong>${k.kreditur}</strong></td>
+        <td class="text-right">${k.total}</td>
+        <td class="text-right text-muted">${k.lunas}</td>
+        <td class="text-right text-danger">${formatRp(k.sisa)}</td>
+      </tr>
+    `).join('');
+
+    // Installments table
+    const allInst = await query('installments?select=id,debt_id,tanggal_jatuh_tempo,jumlah,status,tanggal_bayar&order=tanggal_jatuh_tempo.desc&limit=30');
+    for (const i of allInst) i.kreditur = debtMap[i.debt_id] || 'Unknown';
+    allInst.sort((a,b) => new Date(a.tanggal_jatuh_tempo) - new Date(b.tanggal_jatuh_tempo));
+    document.getElementById('installmentsTable').innerHTML = allInst.slice(0,20).map(i => {
+      const due = new Date(i.tanggal_jatuh_tempo);
+      const isOverdue = due < new Date() && i.status !== 'lunas';
+      const badgeClass = i.status === 'lunas' ? 'badge-success' : isOverdue ? 'badge-danger' : 'badge-warning';
+      const badgeText = i.status === 'lunas' ? 'Lunas' : isOverdue ? 'Telat' : 'Belum';
+      return `<tr>
+        <td>${i.kreditur}</td>
+        <td>${debtData.find(d => d.id === i.debt_id)?.nama_item || '-'}</td>
+        <td>${i.tanggal_jatuh_tempo}</td>
+        <td class="text-right">${formatRp(Number(i.jumlah))}</td>
+        <td><span class="badge ${badgeClass}">${badgeText}</span></td>
+      </tr>`;
+    }).join('');
+
+    document.getElementById('lastUpdate').textContent = 'Terakhir: ' + new Date().toLocaleString('id-ID');
+    loading.style.display = 'none';
+    content.style.display = 'block';
+  } catch (e) {
+    loading.style.display = 'none';
+    errorMsg.style.display = 'block';
+    document.getElementById('errorMsg').textContent = 'Gagal memuat data: ' + e.message;
+  }
+}
+
+loadData();
+</script>
+</body>
+</html>
