@@ -247,7 +247,8 @@ async function loadData() {
   } catch (e) {
     loading.style.display = 'none';
     errorMsg.style.display = 'block';
-    document.getElementById('errorMsg').textContent = 'Gagal memuat data: ' + e.message + (e.cause ? ' (' + e.cause + ')' : '');
+    console.error('Dashboard error:', e);
+    document.getElementById('errorMsg').textContent = 'Gagal memuat data: ' + (e.message || e) + (e.cause ? ' (' + e.cause + ')' : '');
   }
 }
 
