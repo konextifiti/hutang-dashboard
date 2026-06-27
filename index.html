@@ -8,7 +8,7 @@
 <style>
 * { margin: 0; padding: 0; box-sizing: border-box; }
 body { font-family: system-ui, sans-serif; background: #0f172a; color: #e2e8f0; padding: 24px; }
-.lock-screen { position:fixed; inset:0; display:flex; align-items:center; justify-content:center; background:#0f172a; z-index:9999; }
+.lock-screen { position:fixed; inset:0; display:none; align-items:center; justify-content:center; background:#0f172a; z-index:9999; }
 .lock-box { background:#1e293b; border-radius:16px; padding:40px; border:1px solid #334155; text-align:center; max-width:360px; width:100%; }
 .lock-box h2 { color:#f8fafc; margin-bottom:8px; font-size:1.2rem; }
 .lock-box p { color:#94a3b8; font-size:.85rem; margin-bottom:24px; }
@@ -188,8 +188,9 @@ async function loadData() {
     `;
 
     // Chart Kreditur
+    if (window.chartKreditur) window.chartKreditur.destroy();
     const ctx1 = document.getElementById('chartKreditur').getContext('2d');
-    new Chart(ctx1, {
+    window.chartKreditur = new Chart(ctx1, {
       type: 'bar',
       data: {
         labels: krediturList.map(k => k.kreditur),
@@ -213,7 +214,8 @@ async function loadData() {
     // Chart Status
     const totalLunas = krediturList.reduce((a,b) => a + b.lunas, 0);
     const totalPartial = krediturList.reduce((a,b) => a + b.partial, 0);
-    new Chart(document.getElementById('chartStatus'), {
+    if (window.chartStatus) window.chartStatus.destroy();
+    window.chartStatus = new Chart(document.getElementById('chartStatus'), {
       type: 'doughnut',
       data: {
         labels: ['Belum Lunas', 'Lunas', 'Partial'],
